@@ -199,15 +199,10 @@ def file_read(file_path: str, start_line: Optional[int] = None, end_line: Option
             content = "".join(lines[start:end])
             return f"--- Content of {file_path} (Lines {start+1}-{end}) ---\n{content}"
         else:
-from backend import load_existing_chroma, SQLiteFTS5BM25
-from rag_chain import hybrid_search, get_reranker
-from config import RETRIEVER_K, RERANK_TOP_K, USE_RERANKER, WORKSPACE_ROOT
-from pydantic import BaseModel, Field
-from typing import Optional, List
-import logging
-import os
-import threading
-
+            content = "".join(lines)
+            return f"--- Content of {file_path} ---\n{content}"
+    except Exception as e:
+        return f"Error reading file: {str(e)}"
 # 🛡️ Fail-Closed Tool Factory (buildTool.ts:15)
 class ToolMetadata(BaseModel):
     name: str

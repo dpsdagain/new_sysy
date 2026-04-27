@@ -580,7 +580,7 @@ Based on this status, determine the next action."""
                     self.save_session(session_id, [tool_msg], append_only=True)
                     yield {"type": "tool_result", "tool": tool_name, "result": result}
                 
-                continue # Re-plan after tool execution
+                pass # Logic continues naturally
 
             # 🚀 HIGH-FIDELITY FINAL ACTION
             if action == "final":
