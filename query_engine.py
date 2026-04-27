@@ -142,7 +142,7 @@ class Coordinator:
 
 class QueryEngine:
     """The High-Fidelity Agentic Engine Loop (F-01)."""
-    def __init__(self, session_id: str = "default", model_id: str = DEFAULT_MODEL, permission_mode: str = "ASK", delegation_depth: int = 0):
+    def __init__(self, session_id: str = "default", model_id: str = DEFAULT_MODEL, temperature: float = LLM_TEMPERATURE, permission_mode: str = "ASK", delegation_depth: int = 0):
         self.session_id = session_id
         self.model_id = model_id
         self.permission_mode = permission_mode
@@ -192,7 +192,7 @@ class QueryEngine:
                     "parameters": info["input_schema"].model_json_schema(),
                 },
             }
-            for name, info in AVAILABLE_TOOLS.items()
+            for name, info in tools.AVAILABLE_TOOLS.items()
         ]
         self.llm_with_tools = self.llm.bind_tools(self.tools_metadata)
 
@@ -257,7 +257,8 @@ class QueryEngine:
 
     def execute_tool(self, name: str, args: Dict[str, Any], tool_id: str = "unknown") -> str:
         """Execute a tool by name with provided arguments, checking permissions."""
-        if name not in AVAILABLE_TOOLS:
+        import tools
+        if name not in tools.AVAILABLE_TOOLS:
             return f"Error: Tool '{name}' not found."
         
         # Check permissions
@@ -265,7 +266,7 @@ class QueryEngine:
         if not is_allowed:
             return f"Error: Permission denied to run tool '{name}'."
 
-        tool_info = AVAILABLE_TOOLS[name]
+        tool_info = tools.AVAILABLE_TOOLS[name]
         try:
             # Validate args against pydantic schema
             validated_args = tool_info["input_schema"](**args)
@@ -513,7 +514,7 @@ Based on this status, determine the next action."""
 
             # 🚀 ENFORCED TOOL ACTION (ACTIVE NUDGE)
             if action == "tool":
-                yield {"type": "status", "content": f"Action: {reason}"}
+                yield {"type": "status", "content": f"Action: {decision.get('reason', 'Executing Tool...')}"}
                 
                 # Active nudge to prevent model passivity (The "Lazy LLM" fix)
                 nudge = SystemMessage(content="If external action is required (file read/write, bash), you MUST call a tool now. Do not provide a text-only response unless you are giving a final answer.")

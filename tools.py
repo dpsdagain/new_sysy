@@ -1,6 +1,8 @@
 import os
 import threading
 import logging
+from urllib.parse import urlparse
+import ipaddress
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 from langchain_core.documents import Document
@@ -277,28 +279,19 @@ def validate_path(path: str) -> str:
             raise e
         raise PermissionError(f"Access Denied: Could not validate path '{path}'.")
 
-class CodeSearchInput(BaseModel):
-    query: str = Field(description="The natural language query or keywords to search for in the codebase.")
-    collection_name: str = Field(default="default", description="The name of the collection to search within.")
-    k: int = Field(default=RETRIEVER_K, description="Number of initial documents to retrieve.")
 
-class FileReadInput(BaseModel):
-    file_path: str = Field(description="The absolute path to the file to read.")
-    start_line: Optional[int] = Field(default=None, description="The 1-based line number to start reading from.")
-    end_line: Optional[int] = Field(default=None, description="The 1-based line number to end reading at.")
+class SwitchModelInput(BaseModel):
+    model_id: str = Field(..., description="The ID of the model to switch to (e.g., 'ollama-cloud:gpt-oss:120b-cloud').")
 
-class FileEditInput(BaseModel):
-    file_path: str = Field(description="The absolute path to the file to edit.")
-    old_string: str = Field(description="The exact literal text to replace.")
-    new_string: str = Field(description="The text to replace old_string with.")
+def switch_model(model_id: str) -> str:
+    """Reboots the agent with a new LLM engine. All conversation context is preserved."""
+    return f"[MODEL_SWITCHED] {model_id}"
 
-class Replacement(BaseModel):
-    old_string: str = Field(description="The exact literal text to replace.")
-    new_string: str = Field(description="The text to replace old_string with.")
+class UpdatePlanInput(BaseModel):
+    plan: str = Field(description="The updated step-by-step plan for the current task.")
 
-class MultiFileEditInput(BaseModel):
-    file_path: str = Field(description="The absolute path to the file to edit.")
-    replacements: List[Replacement] = Field(description="A list of replacement pairs.")
+class SetStatusInput(BaseModel):
+    status: str = Field(description="Brief status message for the UI (e.g. 'Analyzing index...').")
 
 class UndoInput(BaseModel):
     message_id: str = Field(description="The ID of the turn/message to revert. Use the tool_use ID from the turn you want to undo.")
@@ -313,159 +306,57 @@ class NotebookEditInput(BaseModel):
 class DoctorInput(BaseModel):
     pass
 
-class WebFetchInput(BaseModel):
-    url: str = Field(description="The URL to fetch documentation from.")
-    prompt: Optional[str] = Field(None, description="Optional focus (e.g. 'Extract only the auth examples').")
+class CostInput(BaseModel):
+    pass
+
+class GitStatusInput(BaseModel):
+    pass
+
+class GitDiffInput(BaseModel):
+    file_path: Optional[str] = Field(None, description="Optional path to a specific file to diff.")
+
+class GitCommitInput(BaseModel):
+    message: str = Field(description="The commit message.")
+
+class GitLogInput(BaseModel):
+    limit: int = Field(default=5, description="Number of recent commits to show.")
+
+# -----------------------------------------------------------------------------
+# GIT INTEGRATION (F-34)
+class UpdatePlanInput(BaseModel):
+    plan: str = Field(description="The updated step-by-step plan for the current task.")
+
+class SetStatusInput(BaseModel):
+    status: str = Field(description="Brief status message for the UI (e.g. 'Analyzing index...').")
+
+class UndoInput(BaseModel):
+    message_id: str = Field(description="The ID of the turn/message to revert. Use the tool_use ID from the turn you want to undo.")
+
+class NotebookEditInput(BaseModel):
+    file_path: str = Field(description="Path to the .ipynb file.")
+    cell_id: str = Field(description="UUID or virtual ID (cell-0, cell-1) of the cell.")
+    new_source: str = Field(description="New content for the cell.")
+    edit_mode: str = Field(default="replace", description="replace, insert, or delete.")
+    cell_type: str = Field(default="code", description="code or markdown.")
+
+class DoctorInput(BaseModel):
+    pass
 
 class CostInput(BaseModel):
     pass
 
-class GrepInput(BaseModel):
-    pattern: str = Field(description="The regex pattern to search for.")
-    include_pattern: Optional[str] = Field(default=None, description="Glob pattern for files to include (e.g., '*.py').")
-    exclude_pattern: Optional[str] = Field(default=None, description="Glob pattern for files to exclude.")
-    case_sensitive: bool = Field(default=False, description="Whether the search should be case-sensitive.")
+class GitStatusInput(BaseModel):
+    pass
 
-def grep_tool(pattern: str, include_pattern: Optional[str] = None, exclude_pattern: Optional[str] = None, case_sensitive: bool = False) -> str:
-    """Search for a pattern across the codebase using Python-native regex for platform consistency."""
-    import re
-    import fnmatch
-    
-    flags = re.IGNORECASE if not case_sensitive else 0
-    try:
-        regex = re.compile(pattern, flags)
-    except re.error as e:
-        return f"Invalid regex pattern: {str(e)}"
+class GitDiffInput(BaseModel):
+    file_path: Optional[str] = Field(None, description="Optional path to a specific file to diff.")
 
-    matches = []
-    root_dir = str(WORKSPACE_ROOT)
-    
-    for root, _, files in os.walk(root_dir):
-        # Apply directory exclusions
-        if any(fnmatch.fnmatch(root, f"*{exc}*") for exc in ["__pycache__", "venv", ".git", "chroma_db"]):
-            continue
-            
-        for file in files:
-            file_path = os.path.join(root, file)
-            rel_path = os.path.relpath(file_path, root_dir)
-            
-            # Filter by include/exclude patterns
-            if include_pattern and not fnmatch.fnmatch(file, include_pattern):
-                continue
-            if exclude_pattern and fnmatch.fnmatch(file, exclude_pattern):
-                continue
-                
-            try:
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                    for i, line in enumerate(f, 1):
-                        if regex.search(line):
-                            matches.append(f"{rel_path}:{i}:{line.strip()}")
-            except Exception:
-                continue
+class GitCommitInput(BaseModel):
+    message: str = Field(description="The commit message.")
 
-    if not matches:
-        return f"No matches found for pattern: {pattern}"
-    
-    return "\n".join(matches[:500]) # Cap at 500 lines for context safety
+class GitLogInput(BaseModel):
+    limit: int = Field(default=5, description="Number of recent commits to show.")
 
-def multi_file_edit(file_path: str, replacements: List[Replacement]) -> str:
-    """Apply multiple surgical replacements to a single file in one go (F-05 Parity)."""
-    from edit_utils import FuzzyMatcher
-    try:
-        file_path = validate_path(file_path)
-    except PermissionError as e:
-        return str(e)
-        
-    if not os.path.exists(file_path):
-        return f"Error: File '{file_path}' does not exist."
-    
-    try:
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read()
-        
-        diffs = []
-        for rep in replacements:
-            old_str = rep.old_string
-            new_str = rep.new_string
-            
-            # 🧬 Fuzzy Recovery Phase (multi-edit version)
-            actual_old = FuzzyMatcher.find_actual_string(content, old_str)
-            
-            if not actual_old:
-                return f"Error: Could not find fuzzy match for '{old_str[:50]}...' in {file_path}."
-            
-            # Check for multiple occurrences
-            occurrences = content.count(actual_old)
-            if occurrences > 1:
-                return f"Error: Found {occurrences} fuzzy occurrences of a block. Provide more context."
-                
-            content = content.replace(actual_old, new_string)
-            diffs.append(f"Applied change to block starting with: {actual_old[:30]}...")
-            
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(content)
-            
-        return f"Successfully applied {len(replacements)} fuzzy edits to {file_path}.\n" + "\n".join(diffs)
-    except Exception as e:
-        return f"Error in multi_file_edit: {str(e)}"
-
-def code_search(query: str, collection_name: str = "default", k: int = RETRIEVER_K) -> str:
-    """Search the codebase using hybrid search (Vector + BM25)."""
-    db = load_existing_chroma(collection_name)
-    if not db:
-        return f"Error: Collection '{collection_name}' not found or is empty."
-    
-    docs = hybrid_search(db, query, collection_name=collection_name, k=k)
-    
-    if USE_RERANKER:
-        reranker = get_reranker()
-        if reranker:
-            docs = reranker.rerank(query, docs, top_k=RERANK_TOP_K)
-            
-    if not docs:
-        return "No relevant code snippets found."
-    
-    formatted_results = []
-    for i, doc in enumerate(docs):
-        source = doc.metadata.get("source", "Unknown")
-        formatted_results.append(f"--- Result {i+1} ({source}) ---\n{doc.page_content}")
-        
-    return "\n\n".join(formatted_results)
-
-def file_read(file_path: str, start_line: Optional[int] = None, end_line: Optional[int] = None) -> str:
-    """Read a file's content, optionally within a line range."""
-    try:
-        file_path = validate_path(file_path)
-    except PermissionError as e:
-        return str(e)
-
-    if not os.path.exists(file_path):
-        return f"Error: File '{file_path}' does not exist."
-    
-    try:
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-            lines = f.readlines()
-            
-        if start_line is not None or end_line is not None:
-            start = (start_line - 1) if start_line else 0
-            end = end_line if end_line else len(lines)
-            content = "".join(lines[start:end])
-            return f"--- Content of {file_path} (Lines {start+1}-{end}) ---\n{content}"
-        else:
-            content = "".join(lines)
-            return f"--- Content of {file_path} ---\n{content}"
-    except Exception as e:
-        return f"Error reading file: {str(e)}"
-
-class SwitchModelInput(BaseModel):
-    model_id: str = Field(..., description="The ID of the model to switch to (e.g., 'ollama-cloud:gpt-oss:120b-cloud').")
-
-def switch_model(model_id: str) -> str:
-    """Reboots the agent with a new LLM engine. All conversation context is preserved."""
-    return f"[MODEL_SWITCHED] {model_id}"
-
-# -----------------------------------------------------------------------------
-# GIT INTEGRATION (F-34)
 # -----------------------------------------------------------------------------
 
 @tool
@@ -590,8 +481,76 @@ def undo_last_edit(message_id: str) -> str:
     except Exception as e:
         return f"Error performing undo: {str(e)}"
 
+class UpdatePlanInput(BaseModel):
+    plan: str = Field(description="The updated step-by-step plan for the current task.")
+
+class SetStatusInput(BaseModel):
+    status: str = Field(description="Brief status message for the UI (e.g. 'Analyzing index...').")
+
+class UndoInput(BaseModel):
+    message_id: str = Field(description="The ID of the turn/message to revert. Use the tool_use ID from the turn you want to undo.")
+
+class NotebookEditInput(BaseModel):
+    file_path: str = Field(description="Path to the .ipynb file.")
+    cell_id: str = Field(description="UUID or virtual ID (cell-0, cell-1) of the cell.")
+    new_source: str = Field(description="New content for the cell.")
+    edit_mode: str = Field(default="replace", description="replace, insert, or delete.")
+    cell_type: str = Field(default="code", description="code or markdown.")
+
+class DoctorInput(BaseModel):
+    pass
+
+class CostInput(BaseModel):
+    pass
+
+class GitStatusInput(BaseModel):
+    pass
+
+class GitDiffInput(BaseModel):
+    file_path: Optional[str] = Field(None, description="Optional path to a specific file to diff.")
+
+class GitCommitInput(BaseModel):
+    message: str = Field(description="The commit message.")
+
+class GitLogInput(BaseModel):
+    limit: int = Field(default=5, description="Number of recent commits to show.")
+
 # -----------------------------------------------------------------------------
 # TOOL REGISTRY (Extended)
+class UpdatePlanInput(BaseModel):
+    plan: str = Field(description="The updated step-by-step plan for the current task.")
+
+class SetStatusInput(BaseModel):
+    status: str = Field(description="Brief status message for the UI (e.g. 'Analyzing index...').")
+
+class UndoInput(BaseModel):
+    message_id: str = Field(description="The ID of the turn/message to revert. Use the tool_use ID from the turn you want to undo.")
+
+class NotebookEditInput(BaseModel):
+    file_path: str = Field(description="Path to the .ipynb file.")
+    cell_id: str = Field(description="UUID or virtual ID (cell-0, cell-1) of the cell.")
+    new_source: str = Field(description="New content for the cell.")
+    edit_mode: str = Field(default="replace", description="replace, insert, or delete.")
+    cell_type: str = Field(default="code", description="code or markdown.")
+
+class DoctorInput(BaseModel):
+    pass
+
+class CostInput(BaseModel):
+    pass
+
+class GitStatusInput(BaseModel):
+    pass
+
+class GitDiffInput(BaseModel):
+    file_path: Optional[str] = Field(None, description="Optional path to a specific file to diff.")
+
+class GitCommitInput(BaseModel):
+    message: str = Field(description="The commit message.")
+
+class GitLogInput(BaseModel):
+    limit: int = Field(default=5, description="Number of recent commits to show.")
+
 # -----------------------------------------------------------------------------
 
 def file_edit(file_path: str, old_string: str, new_string: str) -> str:
@@ -976,10 +935,29 @@ def web_search(query: str) -> str:
     except Exception as e:
         return f"Error performing web search: {str(e)}"
 
+def is_safe_url(url: str) -> bool:
+    """SSRF Shield: Blocks access to private IP ranges and local hostnames."""
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        if hostname.lower() in ["localhost", "127.0.0.1", "0.0.0.0", "::1"]:
+            return False
+        try:
+            ip = ipaddress.ip_address(hostname)
+            return not ip.is_private
+        except ValueError:
+            return True
+    except Exception:
+        return False
+
 def web_fetch(url: str) -> str:
-    """Fetch webpage content with improved extraction and noise reduction."""
+    if not is_safe_url(url):
+        return "Error: Access to local or private network addresses is restricted."
     import requests
     import re
+    """Fetch webpage content with improved extraction and noise reduction."""
     try:
         from bs4 import BeautifulSoup
         has_bs4 = True
@@ -1003,55 +981,14 @@ def web_fetch(url: str) -> str:
                 main_content = soup.find('div', class_=re.compile(r'content|main|body', re.I))
                 
             text = (main_content or soup).get_text(separator='\n')
-        else:
             text = resp.text
-            text = re.sub(r'<(script|style|nav|footer|header).*?>.*?</\1>', '', text, flags=re.DOTALL | re.IGNORECASE)
-            text = re.sub(r'<.*?>', ' ', text)
-
-        # High-quality whitespace cleanup
-        lines = [l.strip() for l in text.splitlines() if len(l.strip()) > 10] # Filter out short menu items
-        clean_text = '\n'.join(lines)
-        
-        return f"--- Content from {url} ---\n\n{clean_text[:15000]}..." 
+        else:
+            text = re.sub(r"<script.*?</script>", "", text, flags=re.DOTALL | re.IGNORECASE)
+            text = re.sub(r"<style.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
+            text = re.sub(r"<.*?>", " ", text)
+        return text
     except Exception as e:
         return f"Error fetching webpage: {str(e)}"
-
-class UpdatePlanInput(BaseModel):
-    plan: str = Field(description="The updated step-by-step plan for the current task.")
-
-def update_plan(plan: str) -> str:
-    """Synthetic Tool: Update your internal master plan. Use this to track progress and next steps."""
-    return f"[PLAN_UPDATED] {plan}"
-
-class SetStatusInput(BaseModel):
-    status: str = Field(description="Brief status message for the UI (e.g. 'Analyzing index...').")
-
-def set_status(status: str) -> str:
-    """Synthetic Tool: Update the UI status bar to inform the user of your current sub-task."""
-    return f"[STATUS_UPDATED] {status}"
-    """SSRF Shield: Blocks access to private IP ranges and local hostnames."""
-    from urllib.parse import urlparse
-    import ipaddress
-    try:
-        parsed = urlparse(url)
-        hostname = parsed.hostname
-        if not hostname:
-            return False
-        
-        # Block literal local hostnames
-        if hostname.lower() in ["localhost", "127.0.0.1", "0.0.0.0", "::1"]:
-            return False
-            
-        # Attempt to resolve IP (simplified check - in prod use DNS resolution)
-        try:
-            ip = ipaddress.ip_address(hostname)
-            return not ip.is_private
-        except ValueError:
-            # It's a domain name (e.g. google.com) - assumed safe for this implementation
-            return True
-    except Exception:
-        return False
-
 def symbol_search(symbol: str) -> str:
     """Find the definition of a class or function across the codebase (Python-native)."""
     import re
