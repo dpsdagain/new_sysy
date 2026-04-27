@@ -1219,7 +1219,15 @@
   {
     "type": "AIMessageChunk",
     "data": {
-      "content": "In the current working directory (`C:\\Users\\CHip\\OneDrive - Chipspirit Technologies Private Limited\\Desktop\\AM\\24\\SPI\\anti_gravity\\new_sysy`) there are **13** items:\n\n| Type | Name |\n|------|------|\n| File | `.env` |\n| File | `backend.py` |\n| File | `cli.py` |\n| File | `config.py` |\n| File | `context_manager.py` |\n| File | `ingest_all.py` |\n| File | `permissions.py` |\n| File | `query_engine.py` |\n| File | `rag_chain.py` |\n| File | `result_manager.py` |\n| Directory | `sessions` |\n| Directory | `temp_outputs` |\n| File | `tools.py` |\n| Directory | `__pycache__` |\n\nSo you have **13 entries** (10 regular files plus 3 directories).",
+      "content": [
+        {
+          "type": "text",
+          "text": "In the current working directory (`C:\\Users\\CHip\\OneDrive - Chipspirit Technologies Private Limited\\Desktop\\AM\\24\\SPI\\anti_gravity\\new_sysy`) there are **13** items:\n\n| Type | Name |\n|------|------|\n| File | `.env` |\n| File | `backend.py` |\n| File | `cli.py` |\n| File | `config.py` |\n| File | `context_manager.py` |\n| File | `ingest_all.py` |\n| File | `permissions.py` |\n| File | `query_engine.py` |\n| File | `rag_chain.py` |\n| File | `result_manager.py` |\n| Directory | `sessions` |\n| Directory | `temp_outputs` |\n| File | `tools.py` |\n| Directory | `__pycache__` |\n\nSo you have **13 entries** (10 regular files plus 3 directories).",
+          "cache_control": {
+            "type": "ephemeral"
+          }
+        }
+      ],
       "additional_kwargs": {},
       "response_metadata": {
         "model_provider": "openai",
@@ -1230,6 +1238,38 @@
       "type": "AIMessageChunk",
       "name": null,
       "id": "lc_run--019dcda5-b3da-7d21-b59a-f928340349e3",
+      "tool_calls": [],
+      "invalid_tool_calls": [],
+      "usage_metadata": null,
+      "tool_call_chunks": [],
+      "chunk_position": "last"
+    }
+  },
+  {
+    "type": "human",
+    "data": {
+      "content": "do you have this cababilties to list down dir or read the working dir?",
+      "additional_kwargs": {},
+      "response_metadata": {},
+      "type": "human",
+      "name": null,
+      "id": null
+    }
+  },
+  {
+    "type": "AIMessageChunk",
+    "data": {
+      "content": "Yes \u2013 the agent has built\u2011in tools that let it explore the file system.\n\n### How the agent can list a directory\n* **`bash` tool** \u2013 Executes a shell command.  \n  In a Windows environment we use the native `dir` command (or `type` to show a file\u2019s contents).  \n  Example call you just saw:  \n\n  ```json\n  {\n    \"tool_name\": \"bash\",\n    \"tool_args\": { \"command\": \"dir /b\" }\n  }\n  ```\n\n  The command returns a plain\u2011text list of files and sub\u2011folders in the current working directory.\n\n### How the agent can read a file\n* **`file_read` tool** \u2013 Takes a fully\u2011qualified path and optional line numbers, then returns the file\u2019s text.  \n  It validates the path against `WORKSPACE_ROOT` (the security \u201cPath Sentinel\u201d) before opening the file, so the agent can only read files that lie inside the allowed workspace.\n\n### Security guardrails\n* **Path Sentinel** (`PermissionManager.validate_path`) checks that every `file_path`, `directory`, or `context_files` argument stays inside the workspace and doesn\u2019t contain forbidden patterns (e.g., `.env`, `.ssh`, credentials).  \n* **Permission modes** (`ASK`, `AUTO`, `DENY`) control whether the tool call is automatically approved or requires a human \u201cask\u201d. The default is `ASK`, which still auto\u2011approves safe read\u2011only commands like `dir` and `file_read` after the path checks.\n\nSo, in practice the agent can:\n\n1. **List contents** \u2013 `bash` \u2192 `dir /b` (or `dir` for detailed view).  \n2. **Read any allowed file** \u2013 `file_read` \u2192 `file_path=\"C:\\\\\u2026\\\\myfile.py\"` (optional line range).  \n\nBoth operations are wrapped in the permission system to prevent the agent from wandering outside the workspace or accessing sensitive files.",
+      "additional_kwargs": {},
+      "response_metadata": {
+        "model_provider": "openai",
+        "finish_reason": "stop",
+        "model_name": "gpt-oss:120b-cloud",
+        "system_fingerprint": "fp_ollama"
+      },
+      "type": "AIMessageChunk",
+      "name": null,
+      "id": "lc_run--019dce19-f16f-7e02-809b-0c4e32c8ba0e",
       "tool_calls": [],
       "invalid_tool_calls": [],
       "usage_metadata": null,
