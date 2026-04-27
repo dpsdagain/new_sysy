@@ -529,8 +529,6 @@ def git_log(limit: int = 5) -> str:
         return res.stdout if res.returncode == 0 else "Error reading git log."
     except:
         return "Git not found."
-    except:
-        return "Git not found."
 
 @tool
 def cost_report() -> str:
@@ -1186,9 +1184,9 @@ def task_budget(max_tokens: int) -> str:
 
 def ask_user(question: str) -> str:
     """Pause execution and ask the human user a question."""
-            # 🚀 Fix: Removed synchronous input() to prevent deadlocks in UI environments (Streamlit/CLI).
-            # The engine (cli.py or app.py) must detect this sentinel and handle the interruption.
-            return f"[INTERRUPT_REQUIRED] The agent needs human input: {question}"
+    # 🚀 Fix: Removed synchronous input() to prevent deadlocks in UI environments (Streamlit/CLI).
+    # The engine (cli.py or app.py) must detect this sentinel and handle the interruption.
+    return f"[INTERRUPT_REQUIRED] The agent needs human input: {question}"
 
 
 # 🗃️ Tool Registry (Partitioned for Prompt Cache Stability)
